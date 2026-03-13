@@ -1,0 +1,8 @@
+[27356:31752:0313/161844.107:WARNING:chrome_main_delegate.cc(745)] This is Chrome version 128.0.6613.138 (not a warning)
+[27356:32340:0313/161844.190:ERROR:google_update_settings.cc(265)] Failed opening key Software\Chromium to set usagestats; result: 5
+[3692:32744:0313/161910.539:ERROR:frame_impl.cc(537)] frame 5-64B3151D7193D685A88D0550B075C24B connection timeout
+[32156:27332:0313/161913.614:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[32156:27332:0313/161913.636:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -107
+[32156:27332:0313/161923.391:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[32156:27332:0313/161933.054:ERROR:ssl_client_socket_impl.cc(882)] handshake failed; returned -1, SSL error code 1, net_error -100
+[27356:31752:0313/162535.916:WARNING:pref_notifier_impl.cc(41)] Pref observer for media_router.cast_allow_all_ips found at shutdown.
