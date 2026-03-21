@@ -1,0 +1,32 @@
+﻿<!DOCTYPE html>
+ <!-- 
+  CSI4130 Assignment 2
+  File: diplodocus.html
+  Name: Andrew Guerette
+  Student Number: 300287614
+-->
+<html>
+  <head>
+    <title>CSI4130 Assignment 2</title>
+    <style>
+        body {
+            /* set margin to 0 and overflow to hidden, to go fullscreen */
+            margin: 0;
+            overflow: hidden;
+        }
+    </style>
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "../node_modules/three/build/three.module.js",
+          "three/addons/": "../node_modules/three/examples/jsm/",
+          "dat.gui": "../node_modules/dat.gui/build/dat.gui.module.js"
+        }
+      }
+    </script>
+</head>
+<body>
+    <script type=module src="diplodocus.js"></script>
+    <script src="../node_modules/three/examples/jsm/libs/ammo.wasm.js"></script>
+</body>
+</html>
