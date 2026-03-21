@@ -1,7 +1,6 @@
-/*  CSI4130 Assignment 2
-    File: diplodocus.js
-    Name: Andrew Guerette
-    Student Number: 300287614
+/*  CSI4130 Assignment 4
+    File: assignment4_script.js
+    Students: Andrew Guerette (300287614)
 */
 
 import * as THREE from 'three';
@@ -350,11 +349,11 @@ function pushSphere() {
         body.setAngularVelocity(new Ammo.btVector3(0,0,0));
         sphereMesh.position.set(x, y, z);
     }
-    let direction = new THREE.Vector3(0, 0, -1);
+    let direction = new THREE.Vector3(0, 0.5, -1);
     let quat = camera.quaternion;
     direction.applyQuaternion(quat);
     direction.multiplyScalar(20);
-    sphereMesh.userData.physicsBody.applyCentralImpulse(new AmmoLib.btVector3(direction.x, 5, direction.z));
+    sphereMesh.userData.physicsBody.applyCentralImpulse(new AmmoLib.btVector3(direction.x, direction.y, direction.z));
 }
 
 window.onload = init;
