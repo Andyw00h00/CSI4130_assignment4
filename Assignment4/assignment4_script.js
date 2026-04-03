@@ -6,11 +6,12 @@
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 
+let scene;
 let physicsWorld;
 let AmmoLib;
 let lastTime = performance.now();
 let controls;
-let sphereMesh;
+let sphereMeshes = [];
 let floorMesh;
 let camera;
 
@@ -20,8 +21,11 @@ let keys = {
     s: false,
     d: false,
     up: false,
-    down: false
+    down: false,
+    e: false
 };
+
+let ballThrown = false;
 
 function initPhysicsWorld() {
     const config = new Ammo.btDefaultCollisionConfiguration();
@@ -53,19 +57,10 @@ async function init() {
     container.appendChild(renderer.domElement);
 	
     // Scene graph
-    var scene = new THREE.Scene();
+    scene = new THREE.Scene();
 
     AmmoLib = await Ammo();
     initPhysicsWorld();
-
-    let radius = 0.1;
-    let sphere = new THREE.SphereGeometry(radius, 100, 100);
-    let material = new THREE.MeshStandardMaterial({color: 'red'});
-    sphereMesh = new THREE.Mesh(sphere, material);
-    sphereMesh.position.set(0, 20, 0);
-    sphereMesh.castShadow = true;
-    scene.add(sphereMesh);
-    createSphereRigidBody(sphereMesh, radius, 1, 0.5);
 
     floorMesh = new THREE.Mesh(
         new THREE.BoxGeometry(100, 1, 100),
@@ -125,6 +120,8 @@ async function init() {
 
         let cameraOnFloor = false;
 
+        let floorPointer = AmmoLib.getPointer(floorBody);
+        let cameraPointer = AmmoLib.getPointer(cameraBody);
         for (let i = 0; i < numManifolds; i++) {
             const manifold = dispatcher.getManifoldByIndexInternal(i);
 
@@ -133,15 +130,28 @@ async function init() {
 
             let bodyAPointer = AmmoLib.getPointer(bodyA);
             let bodyBPointer = AmmoLib.getPointer(bodyB);
-            let floorPointer = AmmoLib.getPointer(floorBody);
-            let cameraPointer = AmmoLib.getPointer(cameraBody);
-
+    
             if ((bodyAPointer === floorPointer && bodyBPointer === cameraPointer) ||
                 (bodyAPointer === cameraPointer && bodyBPointer === floorPointer)) {
                 if (manifold.getNumContacts() > 0) {
                     cameraOnFloor = true;
-                    break; // early exit
                 }
+            }
+
+            for(let i = 0; i < sphereMeshes.length; i++) {
+                let ballPointer = AmmoLib.getPointer(sphereMeshes[i].userData.physicsBody);
+                if(bodyAPointer !== cameraPointer && bodyBPointer !== cameraPointer &&
+                    (bodyAPointer === ballPointer || bodyBPointer === ballPointer)) {
+                    if (manifold.getNumContacts() > 0) {
+                        let mesh = sphereMeshes[i];
+                        let body = mesh.userData.physicsBody;
+                        destroyBall(sphereMeshes[i]);
+                    }
+                }
+            }
+
+            if(cameraOnFloor) {
+                //break; // Early exit if all contact points found
             }
         }
 
@@ -160,11 +170,15 @@ async function init() {
         if(keys.up && cameraOnFloor) {
             vy = 12;
         }
+        if(keys.e && !ballThrown) {
+            throwBall();
+            ballThrown = true;
+        }
+
         let quat = camera.quaternion;
         direction.applyQuaternion(quat);
         direction.multiplyScalar(2);
         direction.y = vy;
-        //console.log(direction.x, direction.y, direction.z);
         cameraBody.activate(true);
         cameraBody.setLinearVelocity(new AmmoLib.btVector3(direction.x, direction.y, direction.z));
 
@@ -181,6 +195,9 @@ async function init() {
 
                     obj.position.set(origin.x(), origin.y(), origin.z());
                     obj.quaternion.set(rotation.x(), rotation.y(), rotation.z(), rotation.w());
+                    Ammo.destroy(origin);
+                    Ammo.destroy(rotation);
+                    Ammo.destroy(transform);
                 }
             }
         });
@@ -192,6 +209,8 @@ async function init() {
             motion.getWorldTransform(transform);
             let origin = transform.getOrigin();
             camera.position.set(origin.x(), origin.y() + 1, origin.z());
+            Ammo.destroy(origin);
+            Ammo.destroy(transform);
         }
 		renderer.render(scene, camera);
     }
@@ -229,6 +248,11 @@ function createSphereRigidBody(mesh, radius, mass, restitution) {
     physicsWorld.addRigidBody(body);
 
     mesh.userData.physicsBody = body;
+
+    Ammo.destroy(rbInfo);
+    Ammo.destroy(localInertia);
+    Ammo.destroy(transform);
+    
 }
 
 function createBoxRigidBody(mesh, size, mass, restitution) {
@@ -299,6 +323,9 @@ window.addEventListener('keydown', function(event) {
     if(lowerCaseKey == 'shift') {
         keys.down = true;
     }
+    if(lowerCaseKey == 'e') {
+        keys.e = true;
+    }
 }, { passive: false });
 
 window.addEventListener('keyup', function(event) {
@@ -321,39 +348,67 @@ window.addEventListener('keyup', function(event) {
     if(lowerCaseKey == 'shift') {
         keys.down = false;
     }
-}, { passive: false });
-
-window.addEventListener('keypress', function(event) {
-    let lowerCaseKey = event.key.toLowerCase();
     if(lowerCaseKey == 'e') {
-        pushSphere();
+        keys.e = false;
+        ballThrown = false;
     }
+
 }, { passive: false });
 
-window.addEventListener("mousemove", () => {});
+function throwBall() {
+    let mesh = createBall();
+    //repositionBody(camera.position.x, camera.position.y, camera.position.z, body, mesh);
+    let direction = new THREE.Vector3(0, 0.5, -1);
+    let quat = camera.quaternion;
+    direction.applyQuaternion(quat);
+    direction.multiplyScalar(20);
+    mesh.userData.physicsBody.applyCentralImpulse(new AmmoLib.btVector3(direction.x, direction.y, direction.z));
+}
 
-function pushSphere() {
-    let body = sphereMesh.userData.physicsBody;
+function repositionBody(x, y, z, body, mesh) {
     let motion = body.getMotionState();
     if(motion) {
         const transform = new AmmoLib.btTransform();
         motion.getWorldTransform(transform);
-        let x = camera.position.x;
-        let y = camera.position.y;
-        let z = camera.position.z;
         transform.setOrigin(new Ammo.btVector3(x, y, z));
         body.setWorldTransform(transform);
         body.getMotionState().setWorldTransform(transform);
         body.activate(true);
         body.setLinearVelocity(new Ammo.btVector3(0,0,0));
         body.setAngularVelocity(new Ammo.btVector3(0,0,0));
-        sphereMesh.position.set(x, y, z);
+        mesh.position.set(x, y, z);
     }
-    let direction = new THREE.Vector3(0, 0.5, -1);
-    let quat = camera.quaternion;
-    direction.applyQuaternion(quat);
-    direction.multiplyScalar(20);
-    sphereMesh.userData.physicsBody.applyCentralImpulse(new AmmoLib.btVector3(direction.x, direction.y, direction.z));
+}
+
+function createBall() {
+    let radius = 0.1;
+    let sphere = new THREE.SphereGeometry(radius, 100, 100);
+    let material = new THREE.MeshStandardMaterial({color: 'white'});
+    let sphereMesh = new THREE.Mesh(sphere, material);
+    let cameraPosition = camera.position;
+    sphereMesh.position.set(cameraPosition.x, cameraPosition.y, cameraPosition.z);
+    sphereMesh.castShadow = true;
+    sphereMeshes.push(sphereMesh);
+    scene.add(sphereMesh);
+    createSphereRigidBody(sphereMesh, radius, 1, 0.5);
+
+    return sphereMesh;
+}
+
+function destroyBall(mesh) {
+    let body = mesh.userData.physicsBody;
+    physicsWorld.removeRigidBody(body);
+    Ammo.destroy(body.getMotionState());
+    Ammo.destroy(body);
+
+    let index = sphereMeshes.indexOf(mesh);
+    if(index !== -1) {
+        sphereMeshes.splice(index, 1);
+    }
+
+    scene.remove(mesh);
+    mesh.geometry.dispose();
+    mesh.material.dispose();
 }
 
 window.onload = init;
