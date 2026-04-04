@@ -13,6 +13,8 @@ let lastTime = performance.now();
 let controls;
 let sphereMeshes = [];
 let floorMesh;
+let leftWallMesh;
+let rightWallMesh;
 let camera;
 
 let keys = {
@@ -26,6 +28,7 @@ let keys = {
 };
 
 let ballThrown = false;
+const MOVEMENTSPEED = 12;
 
 function initPhysicsWorld() {
     const config = new Ammo.btDefaultCollisionConfiguration();
@@ -58,19 +61,64 @@ async function init() {
 	
     // Scene graph
     scene = new THREE.Scene();
+    scene.background = new THREE.Color("lightblue");
 
     AmmoLib = await Ammo();
     initPhysicsWorld();
 
     floorMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(100, 1, 100),
-        new THREE.MeshStandardMaterial({color: 'grey'})
+        new THREE.BoxGeometry(60, 1, 500),
+        new THREE.MeshStandardMaterial({color: 'white'})
     );
+    floorMesh.position.z = 250;
     floorMesh.receiveShadow = true;
+    floorMesh.material.roughness = 0.8;
     scene.add(floorMesh);
     createBoxRigidBody(
         floorMesh, 
-        new THREE.Vector3(100, 1, 100),
+        new THREE.Vector3(60, 1, 500),
+        0,
+        1.0
+    );
+
+    const textureLoader = new THREE.TextureLoader();
+    const texture = textureLoader.load('textures/ConcreteWall2.jpg');
+    texture.wrapS = THREE.RepeatWrapping;
+    texture.wrapT = THREE.RepeatWrapping;
+    texture.repeat.set(125, 1);
+    const wallMaterial = new THREE.MeshStandardMaterial({
+        map: texture,
+        roughness: 0.9,
+        metalness: 0.0
+    });
+
+    const wallHeight = 2;
+    leftWallMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(3, wallHeight, 500),
+        wallMaterial
+    );
+    leftWallMesh.position.set(-16, 1.5, 250);
+    leftWallMesh.receiveShadow = true;
+    leftWallMesh.material.roughness = 0.8;
+    scene.add(leftWallMesh);
+    createBoxRigidBody(
+        leftWallMesh, 
+        new THREE.Vector3(3.5, wallHeight, 500),
+        0,
+        1.0
+    );
+
+    rightWallMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(3, wallHeight, 500),
+        wallMaterial
+    );
+    rightWallMesh.position.set(16, 1.5, 250);
+    rightWallMesh.receiveShadow = true;
+    rightWallMesh.material.roughness = 0.8;
+    scene.add(rightWallMesh);
+    createBoxRigidBody(
+        rightWallMesh, 
+        new THREE.Vector3(3.5, wallHeight, 500),
         0,
         1.0
     );
@@ -84,12 +132,30 @@ async function init() {
     createSphereRigidBody(camera, 0.1, 1, 0.0);
 
     // Add light to the scene
-    const light = new THREE.DirectionalLight(0xffffff, 1);
-    light.position.set(30, 50, 30);
+    const light = new THREE.DirectionalLight(0xffffff, 3);
     light.castShadow = true;
+    light.shadow.camera.left = -25;
+    light.shadow.camera.right = 25;
+    light.shadow.camera.top = 25;
+    light.shadow.camera.bottom = -25;
+    light.shadow.camera.near = 1;
+    light.shadow.camera.far = 50;
+    light.shadow.mapSize.width = 1024;
+    light.shadow.mapSize.height = 1024;
+
+    light.position.set(20, 30, 20);
+    light.target.position.set(0, 0, 100);
+    scene.add(light.target);
     scene.add(light);
 
-    scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+    const ambient = new THREE.AmbientLight(0xffffff, 0.5);
+    scene.add(ambient);
+
+    const hemi = new THREE.HemisphereLight(0xffffff, 0x444444, 0.4);
+    scene.add(hemi);
+
+    const helper = new THREE.CameraHelper(light.shadow.camera);
+    scene.add(helper);
 
     controls = new PointerLockControls(camera, document.body);
 
@@ -177,7 +243,7 @@ async function init() {
 
         let quat = camera.quaternion;
         direction.applyQuaternion(quat);
-        direction.multiplyScalar(2);
+        direction.multiplyScalar(MOVEMENTSPEED);
         direction.y = vy;
         cameraBody.activate(true);
         cameraBody.setLinearVelocity(new AmmoLib.btVector3(direction.x, direction.y, direction.z));
@@ -361,7 +427,13 @@ function throwBall() {
     let direction = new THREE.Vector3(0, 0.5, -1);
     let quat = camera.quaternion;
     direction.applyQuaternion(quat);
-    direction.multiplyScalar(20);
+    direction.multiplyScalar(30);
+
+    let cameraVelocity = camera.userData.physicsBody.getLinearVelocity();
+    direction.x += cameraVelocity.x();
+    direction.y += cameraVelocity.y();
+    direction.z += cameraVelocity.z();
+
     mesh.userData.physicsBody.applyCentralImpulse(new AmmoLib.btVector3(direction.x, direction.y, direction.z));
 }
 
