@@ -15,6 +15,7 @@ let lastTime = performance.now();
 let controls;
 let sphereMeshes = [];
 let floorMesh;
+let floorColliderMesh;
 let leftWallMesh;
 let rightWallMesh;
 let camera;
@@ -38,6 +39,7 @@ let startButton;
 let statusDisplay;
 let hitCooldown = 0; // Health drain cooldown, prevents continuous health drain
 let inShop = false; // Whether in the store interface
+let gameStarted = false;
 let gameOver = false; // Is the game over
 let currentLevel = 1; // Current level, 1 = Snowman level, 2 = Spider level
 let spiderTarget = null; // Spider's target
@@ -68,6 +70,14 @@ function createBoxRigidBody(mesh, size, mass, restitution) {
         mesh.position.y,
         mesh.position.z
     ));
+
+    transform.setRotation(new Ammo.btQuaternion(
+        mesh.quaternion.x,
+        mesh.quaternion.y,
+        mesh.quaternion.z,
+        mesh.quaternion.w
+    ));
+
     const motionState = new Ammo.btDefaultMotionState(transform);
     const localInertia = new Ammo.btVector3(0, 0, 0);
     shape.calculateLocalInertia(mass, localInertia);
@@ -123,13 +133,13 @@ function throwBall() {
     createSphereRigidBody(ball, 0.2, 0.1, 0.5);
     
     // Give the ball an initial speed, directed towards the player's view
-    const direction = new THREE.Vector3(0, 0, -1);
+    const direction = new THREE.Vector3(0, 0.2, -1);
     direction.applyQuaternion(camera.quaternion);
     const body = ball.userData.physicsBody;
     body.setLinearVelocity(new Ammo.btVector3(
-        direction.x * 30,
-        direction.y * 30,
-        direction.z * 30
+        direction.x * 40,
+        direction.y * 40,
+        direction.z * 40
     ));
     
     sphereMeshes.push(ball);
@@ -237,6 +247,7 @@ function endGame() {
         coin = 0;
         inShop = false;
         gameOver = false;
+        gameStarted = false;
         hitCooldown = 0;
         // Update Status
         statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
@@ -338,6 +349,8 @@ function generateNewEnemies() {
                 });
             }
         }
+        gameStarted = true;
+        console.log(gameStarted);
     });
 }
 
@@ -415,22 +428,29 @@ async function init() {
     scene.background = new THREE.Color("lightblue");
     AmmoLib = await Ammo();
     initPhysicsWorld();
-    
+
     // Replace the original white ground with the canal ice surface
     const loader = new GLTFLoader();
-    loader.load('textures/Canaltexture.gltf', function(gltf) {
+    loader.load('textures/Canaltexture.glb', function(gltf) {
         floorMesh = gltf.scene;
-        floorMesh.position.z = 250;
+        floorMesh.position.set(0, 3, 300);
+        floorMesh.rotation.y = Math.PI / 2;
         floorMesh.receiveShadow = true;
-        floorMesh.material.roughness = 0.3; // Low roughness of the ice surface, simulating a slippery effect
+        //floorMesh.material.roughness = 0.3; // Low roughness of the ice surface, simulating a slippery effect
         scene.add(floorMesh);
-        createBoxRigidBody(
-            floorMesh, 
-            new THREE.Vector3(60, 1, 500),
-            0,
-            0.05 // The low friction of the ice surface simulates a slippery effect
+
+        let canalBBox = new THREE.Box3().setFromObject(floorMesh);
+        const size = new THREE.Vector3();
+        canalBBox.getSize(size);
+        floorColliderMesh = new THREE.Mesh(
+            new THREE.BoxGeometry(size.x, size.y, size.z),
+            new THREE.MeshBasicMaterial({visible: false})
         );
+        floorColliderMesh.position.set(-10, -1.5, 300);
+        scene.add(floorColliderMesh);
+        createBoxRigidBody(floorColliderMesh, size, 0, 0.05);
     });
+
     
     const textureLoader = new THREE.TextureLoader();
     const texture = textureLoader.load('textures/ConcreteWall2.jpg');
@@ -442,12 +462,12 @@ async function init() {
         roughness: 0.9,
         metalness: 0.0
     });
-    const wallHeight = 2;
+    const wallHeight = 4;
     leftWallMesh = new THREE.Mesh(
         new THREE.BoxGeometry(3, wallHeight, 500),
         wallMaterial
     );
-    leftWallMesh.position.set(-16, 1.5, 250);
+    leftWallMesh.position.set(-36, 0, 250);
     leftWallMesh.receiveShadow = true;
     leftWallMesh.material.roughness = 0.8;
     scene.add(leftWallMesh);
@@ -461,7 +481,7 @@ async function init() {
         new THREE.BoxGeometry(3, wallHeight, 500),
         wallMaterial
     );
-    rightWallMesh.position.set(16, 1.5, 250);
+    rightWallMesh.position.set(16, 0, 250);
     rightWallMesh.receiveShadow = true;
     rightWallMesh.material.roughness = 0.8;
     scene.add(rightWallMesh);
@@ -471,13 +491,14 @@ async function init() {
         0,
         1.0
     );
-    
+
 	// Camera
 	// calcaulate aspectRatio
 	var aspectRatio = window.innerWidth/window.innerHeight;
 	camera = new THREE.PerspectiveCamera(45, aspectRatio, 0.1, 5000);
     // position the camera back and point to the center of the scene
-    camera.position.set(0, 2, 0);
+    camera.position.set(0, 10, 10);
+    camera.lookAt(0,0,100);
     createSphereRigidBody(camera, 0.1, 1, 0.0);
     
     // Add light to the scene
@@ -562,7 +583,9 @@ async function init() {
     
     // Mouse Lock Listener
     controls.addEventListener('lock', function() {
-        // Lock the mouse
+        if(gameStarted) {
+            controls.lock();
+        }
     });
     controls.addEventListener('unlock', function() {
         // Unlock the mouse
@@ -581,9 +604,8 @@ async function init() {
         let dt = (currentTime - lastTime) / 1000;
         lastTime = currentTime;
         physicsWorld.stepSimulation(dt, 10);
-        
         let cameraBody = camera.userData.physicsBody;
-        let floorBody = floorMesh.userData.physicsBody;
+        let floorBody = floorColliderMesh.userData.physicsBody;
         let vy = cameraBody.getLinearVelocity().y();
         let direction = new THREE.Vector3(0, 0, 0);
         
@@ -607,7 +629,7 @@ async function init() {
                     cameraOnFloor = true;
                 }
             }
-            
+    
             // Handling the collision of small balls
             for(let i = 0; i < sphereMeshes.length; i++) {
                 let ball = sphereMeshes[i];
@@ -716,6 +738,7 @@ async function init() {
                                             coin = 0;
                                             inShop = false;
                                             gameOver = false;
+                                            gameStarted = false;
                                             hitCooldown = 0;
                                             enemies = [];
                                             currentLevel = 1;
@@ -788,7 +811,7 @@ async function init() {
             direction.x = -1;
         }
         if(keys.s) {
-            direction.x = 1;
+            direction.z = 1;
         }
         if(keys.d) {
             direction.x = 1;
@@ -837,17 +860,17 @@ async function init() {
             Ammo.destroy(transform);
         }
         
-        // Double insurance position restriction: 
+        /*// Double insurance position restriction: 
 	// Ensure that players do not move through both sides of the snow walls, 
 	// and do not fall off the ground
         const pos = camera.position;
         // X-axis restriction: limits the player within the frozen canal area, 
 	// preventing them from moving beyond the snow piles on either side
-        pos.x = Math.max(-15, Math.min(15, pos.x));
+        pos.x = Math.max(-34, Math.min(14, pos.x));
         // Y-axis limit: Ensures the player always stays
 	// above the ground and does not fall out of the scene
-        pos.y = Math.max(1, pos.y);
-        camera.position.copy(pos);
+        pos.y = Math.max(0, pos.y);
+        camera.position.copy(pos);*/
         
         // Check game status
         if(gameOver) return; // Game over, pause all logic
@@ -860,7 +883,7 @@ async function init() {
         }
         
         // Check whether all enemies have been killed, then enter the shop
-        if(enemies.length === 0) {
+        if(enemies.length === 0 && gameStarted) {
             openShop();
             return;
         }
@@ -932,3 +955,5 @@ async function init() {
     }
     
 }
+
+window.onload = init;
