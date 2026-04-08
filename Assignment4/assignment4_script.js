@@ -16,6 +16,7 @@ let controls;
 let sphereMeshes = [];
 let floorMesh;
 let floorColliderMesh;
+let floorMinX, floorMaxX; // 保存冰面的x范围，用于限制雪人生成位置
 let leftWallMesh;
 let rightWallMesh;
 let camera;
@@ -200,6 +201,8 @@ function openShop() {
         // Enter the next level and generate new enemies
         currentLevel += 1;
         generateNewEnemies();
+        // 重新锁定鼠标指针，恢复视角控制
+        controls.lock();
     });
 }
 
@@ -258,6 +261,22 @@ function endGame() {
 
 // Generate a new batch of enemies for the new level
 function generateNewEnemies() {
+    // 先清理之前的所有旧敌人，避免残留的敌人导致重复生成、叠在一起的问题
+    for(let i = 0; i < enemies.length; i++) {
+        const enemy = enemies[i];
+        if(enemy.userData.physicsBody) {
+            physicsWorld.removeRigidBody(enemy.userData.physicsBody);
+            Ammo.destroy(enemy.userData.physicsBody.getMotionState());
+            Ammo.destroy(enemy.userData.physicsBody);
+        }
+        scene.remove(enemy);
+    }
+    enemies = [];
+    // 清理之前的蜘蛛相关的残留变量
+    spiderTarget = null;
+    spiderHealth = 0;
+    targetBody = null;
+    
     const loader = new GLTFLoader();
     let modelPath, baseScale;
     if(currentLevel === 1) {
@@ -275,9 +294,19 @@ function generateNewEnemies() {
         baseEnemy.scale.set(baseScale, baseScale, baseScale);
         // Generate different numbers of enemies based on the level
         let enemyCount;
+        let minEnemyX, maxEnemyX, enemyWidth;
         if(currentLevel === 1) {
-            // Level 1: 20 snowmen, randomly distributed
-            enemyCount = 20;
+            // Level 1: 5 snowmen, randomly distributed
+            enemyCount = 5;
+            // 提前计算雪人的尺寸，确保所有雪人都能完整放在有效区域内
+            const baseBox = new THREE.Box3().setFromObject(baseEnemy);
+            enemyWidth = baseBox.max.x - baseBox.min.x;
+            // 按照要求，限制雪人生成在两侧雪堆之间的冰面范围内，同时预留足够的安全距离，绝对不会出现在墙外
+            const snowBankBetweenMinX = -23; // 左侧雪堆的右边界，预留安全距离
+            const snowBankBetweenMaxX = 3; // 右侧雪堆的左边界，预留安全距离
+            // 计算雪人的中心的有效范围，确保整个雪人都在雪堆之间的冰面上，且不会超出到墙外
+            minEnemyX = snowBankBetweenMinX + enemyWidth / 2;
+            maxEnemyX = snowBankBetweenMaxX - enemyWidth / 2;
         } else {
             // Level 2: 1 spider, BOSS enemy
             enemyCount = 1;
@@ -286,8 +315,8 @@ function generateNewEnemies() {
         for(let i = 0; i < enemyCount; i++) {
             let x, z;
             if(currentLevel === 1) {
-                // Level 1: Random Position
-                x = (Math.random() - 0.5) * 30; // -15 to 15, matching the range of the ice surface
+                // Level 1: Random Position，确保整个雪人都在墙和冰面的有效区域内
+                x = minEnemyX + Math.random() * (maxEnemyX - minEnemyX);
                 z = 50 + Math.random() * 200; // 50 to 250, far enough from the player, not too close
             } else {
                 // Level 2: The spider is in the middle front position
@@ -442,6 +471,9 @@ async function init() {
         let canalBBox = new THREE.Box3().setFromObject(floorMesh);
         const size = new THREE.Vector3();
         canalBBox.getSize(size);
+        // 保存冰面的x边界，用于限制雪人生成位置，避免出现在船模区域
+        floorMinX = canalBBox.min.x;
+        floorMaxX = canalBBox.max.x;
         floorColliderMesh = new THREE.Mesh(
             new THREE.BoxGeometry(size.x, size.y, size.z),
             new THREE.MeshBasicMaterial({visible: false})
