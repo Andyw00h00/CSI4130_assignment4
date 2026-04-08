@@ -16,7 +16,7 @@ let controls;
 let sphereMeshes = [];
 let floorMesh;
 let floorColliderMesh;
-let floorMinX, floorMaxX; // 保存冰面的x范围，用于限制雪人生成位置
+let floorMinX, floorMaxX;
 let leftWallMesh;
 let rightWallMesh;
 let camera;
@@ -201,7 +201,7 @@ function openShop() {
         // Enter the next level and generate new enemies
         currentLevel += 1;
         generateNewEnemies();
-        // 重新锁定鼠标指针，恢复视角控制
+        // Re-lock the mouse pointer and restore viewpoint control
         controls.lock();
     });
 }
@@ -261,7 +261,7 @@ function endGame() {
 
 // Generate a new batch of enemies for the new level
 function generateNewEnemies() {
-    // 先清理之前的所有旧敌人，避免残留的敌人导致重复生成、叠在一起的问题
+    // Clear all previous old enemies
     for(let i = 0; i < enemies.length; i++) {
         const enemy = enemies[i];
         if(enemy.userData.physicsBody) {
@@ -272,7 +272,7 @@ function generateNewEnemies() {
         scene.remove(enemy);
     }
     enemies = [];
-    // 清理之前的蜘蛛相关的残留变量
+    // Clear previous spider-related residual variables
     spiderTarget = null;
     spiderHealth = 0;
     targetBody = null;
@@ -298,13 +298,13 @@ function generateNewEnemies() {
         if(currentLevel === 1) {
             // Level 1: 5 snowmen, randomly distributed
             enemyCount = 5;
-            // 提前计算雪人的尺寸，确保所有雪人都能完整放在有效区域内
+            // Calculate the size of the snowman
             const baseBox = new THREE.Box3().setFromObject(baseEnemy);
             enemyWidth = baseBox.max.x - baseBox.min.x;
-            // 按照要求，限制雪人生成在两侧雪堆之间的冰面范围内，同时预留足够的安全距离，绝对不会出现在墙外
-            const snowBankBetweenMinX = -23; // 左侧雪堆的右边界，预留安全距离
-            const snowBankBetweenMaxX = 3; // 右侧雪堆的左边界，预留安全距离
-            // 计算雪人的中心的有效范围，确保整个雪人都在雪堆之间的冰面上，且不会超出到墙外
+            // Restrict the snowman from generating on the ice area between the snow piles on both sides
+            const snowBankBetweenMinX = -23; // The right boundary of the snow pile on the left
+            const snowBankBetweenMaxX = 3; // The left boundary of the snow pile on the right
+            // Calculate the effective range of the snowman's center
             minEnemyX = snowBankBetweenMinX + enemyWidth / 2;
             maxEnemyX = snowBankBetweenMaxX - enemyWidth / 2;
         } else {
@@ -315,7 +315,7 @@ function generateNewEnemies() {
         for(let i = 0; i < enemyCount; i++) {
             let x, z;
             if(currentLevel === 1) {
-                // Level 1: Random Position，确保整个雪人都在墙和冰面的有效区域内
+                // Level 1: Random Position
                 x = minEnemyX + Math.random() * (maxEnemyX - minEnemyX);
                 z = 50 + Math.random() * 200; // 50 to 250, far enough from the player, not too close
             } else {
@@ -353,29 +353,47 @@ function generateNewEnemies() {
             
             // If it is the spider in the second level, add a target
             if(currentLevel === 2) {
-                spiderHealth = 200; // Total health of the spider
-                const loader = new GLTFLoader();
-                loader.load('textures/Target.glb', function(gltf) {
-                    spiderTarget = gltf.scene;
-                    // Target location: the spider's abdomen, always facing the player's direction
-                    spiderTarget.position.set(0, 1.5, 0.5); // Relative position to the spider
-                    enemy.add(spiderTarget); // As a child object of the spider, move with the spider
+                spiderHealth = 5; // Hit 5 times
+                // Create and display the spider's health bar
+                let healthBarContainer = document.getElementById('spiderHealthBarContainer');
+                if(!healthBarContainer) {
+                    // Creating the health bar element for the first time
+                    healthBarContainer = document.createElement('div');
+                    healthBarContainer.id = 'spiderHealthBarContainer';
+                    healthBarContainer.style.position = 'absolute';
+                    healthBarContainer.style.top = '50px';
+                    healthBarContainer.style.left = '50%';
+                    healthBarContainer.style.transform = 'translateX(-50%)';
+                    healthBarContainer.style.width = '300px';
+                    healthBarContainer.style.height = '20px';
+                    healthBarContainer.style.backgroundColor = '#333333';
+                    healthBarContainer.style.borderRadius = '10px';
+                    healthBarContainer.style.zIndex = '100';
+                    healthBarContainer.style.boxShadow = '0 0 5px rgba(0,0,0,0.5)';
                     
-                    // Add a collider to the target to detect hits
-                    const box = new THREE.Box3().setFromObject(spiderTarget);
-                    const size = new THREE.Vector3(
-                        box.max.x - box.min.x,
-                        box.max.y - box.min.y,
-                        box.max.z - box.min.z
-                    );
-                    createBoxRigidBody(
-                        spiderTarget,
-                        size,
-                        0, // Static collider, moves with the spider
-                        1.0
-                    );
-                    targetBody = spiderTarget.userData.physicsBody;
-                });
+                    const healthBar = document.createElement('div');
+                    healthBar.id = 'spiderHealthBar';
+                    healthBar.style.width = '100%';
+                    healthBar.style.height = '100%';
+                    healthBar.style.backgroundColor = '#ff4444';
+                    healthBar.style.borderRadius = '10px';
+                    healthBar.style.transition = 'width 0.2s ease-out';
+                    
+                    healthBarContainer.appendChild(healthBar);
+                    document.body.appendChild(healthBarContainer);
+                }
+                // Display health bar
+                healthBarContainer.style.display = 'block';
+                document.getElementById('spiderHealthBar').style.width = '100%';
+                
+                // Set the targetBody to the spider's own body collider
+                targetBody = enemy.userData.physicsBody;
+            } else {
+                // hid bar
+                const healthBarContainer = document.getElementById('spiderHealthBarContainer');
+                if(healthBarContainer) {
+                    healthBarContainer.style.display = 'none';
+                }
             }
         }
         gameStarted = true;
@@ -471,7 +489,7 @@ async function init() {
         let canalBBox = new THREE.Box3().setFromObject(floorMesh);
         const size = new THREE.Vector3();
         canalBBox.getSize(size);
-        // 保存冰面的x边界，用于限制雪人生成位置，避免出现在船模区域
+        // x boundary of the ice surface
         floorMinX = canalBBox.min.x;
         floorMaxX = canalBBox.max.x;
         floorColliderMesh = new THREE.Mesh(
@@ -678,7 +696,11 @@ async function init() {
                                 let enemy = enemies[j];
                                 if(enemy.userData.physicsBody) {
                                     let enemyPointer = AmmoLib.getPointer(enemy.userData.physicsBody);
-                                    if(bodyAPointer === enemyPointer || bodyBPointer === enemyPointer) {
+                                    // It must be a collision between the ball and the enemy
+                                    if(
+                                        (bodyAPointer === enemyPointer && bodyBPointer === ballPointer) ||
+                                        (bodyBPointer === enemyPointer && bodyAPointer === ballPointer)
+                                    ) {
                                         // Hit the snowman to get Coins
                                         coin += 10;
                                         statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
@@ -688,6 +710,8 @@ async function init() {
                                         Ammo.destroy(enemy.userData.physicsBody);
                                         scene.remove(enemy);
                                         enemies.splice(j, 1);
+                                        // Delete the ball at the same time
+                                        destroyBall(ball);
                                         hitEnemy = true;
                                         break;
                                     }
@@ -699,11 +723,21 @@ async function init() {
                                 let targetPointer = AmmoLib.getPointer(targetBody);
                                 if(bodyAPointer === targetPointer || bodyBPointer === targetPointer) {
                                     // Hit the target, deduct the spider's health
-                                    spiderHealth -= 10;
+                                    spiderHealth -= 1;
+                                    // Update the spider's health bar
+                                    const healthBar = document.getElementById('spiderHealthBar');
+                                    if(healthBar) {
+                                    healthBar.style.width = (spiderHealth / 5 * 100) + '%';
+                                    }
                                     // Update the status display to show the spider's health
                                     statusDisplay.textContent = `Health: ${health} | Coin: ${coin} | Spider Health: ${spiderHealth}`;
                                     // Check if the spider is dead
                                     if(spiderHealth <= 0) {
+                                        // Hide the health bar after the spider dies
+                                        const healthBarContainer = document.getElementById('spiderHealthBarContainer');
+                                        if(healthBarContainer) {
+                                            healthBarContainer.style.display = 'none';
+                                        }
                                         // The spider is dead, giving a 200 Coin as reward
                                         coin += 200;
                                         // Remove all related objects
@@ -737,7 +771,7 @@ async function init() {
                                             <button id="restartBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Play Again</button>
                                         `;
                                         document.body.appendChild(winPanel);
-                                        
+                                                
                                         // Bind the button to enter the store
                                         document.getElementById('enterShopBtn').addEventListener('click', function() {
                                             // Remove the level completion panel
@@ -751,7 +785,7 @@ async function init() {
                                                 shop.scale.set(0.5, 0.5, 0.5); // Scale size
                                                 scene.add(shop);
                                             });
-                                            
+                                                    
                                             // Check if there are enough coins to buy the trophy
                                             if(coin >= 200) {
                                                 coin -= 200;
@@ -760,7 +794,7 @@ async function init() {
                                                 alert('You won, but you don\'t have enough Coins to buy the trophy.');
                                             }
                                         });
-                                        
+                                                
                                         // Bind the restart game button
                                         document.getElementById('restartBtn').addEventListener('click', function() {
                                             // Remove the level completion panel
@@ -787,7 +821,7 @@ async function init() {
                                 }
                             }
                         }
-                        
+
                         // Create a snowball explosion light effect
                         const particleCount = 10;
                         const geometry = new THREE.BufferGeometry();
@@ -798,7 +832,7 @@ async function init() {
                             positions[j*3+1] = ball.position.y;
                             positions[j*3+2] = ball.position.z;
                             velocities.push(new THREE.Vector3(
-                                (Math.random() - 0.5) * 0.2,
+                                (Math.random() - 0.5) * 0.2, 
                                 Math.random() * 0.2,
                                 (Math.random() - 0.5) * 0.2
                             ));
@@ -823,7 +857,7 @@ async function init() {
                                 velocities[j].y -= 0.01; // Gravity effect
                             }
                             particles.geometry.attributes.position.needsUpdate = true;
-                            requestAnimationFrame(animateParticles);
+                                requestAnimationFrame(animateParticles);
                         }
                         animateParticles();
                         // Destroy the ball
@@ -832,7 +866,7 @@ async function init() {
                 }
             }
             if(cameraOnFloor) {
-                //break; // Early exit if all contact points found
+                    //break; // Early exit if all contact points found
             }
         }
         
@@ -892,17 +926,19 @@ async function init() {
             Ammo.destroy(transform);
         }
         
-        /*// Double insurance position restriction: 
-	// Ensure that players do not move through both sides of the snow walls, 
-	// and do not fall off the ground
+        /* 
+        Double insurance position restriction: 
+        Ensure that players do not move through both sides of the snow walls, 
+	    and do not fall off the ground
         const pos = camera.position;
-        // X-axis restriction: limits the player within the frozen canal area, 
-	// preventing them from moving beyond the snow piles on either side
+        X-axis restriction: limits the player within the frozen canal area, 
+	    preventing them from moving beyond the snow piles on either side
         pos.x = Math.max(-34, Math.min(14, pos.x));
-        // Y-axis limit: Ensures the player always stays
-	// above the ground and does not fall out of the scene
+        Y-axis limit: Ensures the player always stays
+	    above the ground and does not fall out of the scene
         pos.y = Math.max(0, pos.y);
-        camera.position.copy(pos);*/
+        camera.position.copy(pos);
+        */
         
         // Check game status
         if(gameOver) return; // Game over, pause all logic
@@ -921,7 +957,7 @@ async function init() {
         }
         
         // Update the enemy's movement: move towards the player,
-	// with different speeds for different levels
+	    // with different speeds for different levels
         let enemySpeed = currentLevel === 1 ? 0.03 : 0.05; // The spiders are faster in the second level
         for(let i = 0; i < enemies.length; i++) {
             let enemy = enemies[i];
@@ -934,8 +970,8 @@ async function init() {
             enemy.position.x += dir.x * enemySpeed;
             enemy.position.z += dir.z * enemySpeed;
             // Motion animation:
-	    // In level 1, the snowman jumps;
-	    // in level 2, the spider does not jump
+	        // In level 1, the snowman jumps;
+	        // in level 2, the spider does not jump
             if(currentLevel === 1) {
                 enemy.position.y = 0 + Math.sin(Date.now() * 0.005 + i) * 0.2;
             }
@@ -958,7 +994,7 @@ async function init() {
             for(let i = 0; i < enemies.length; i++) {
                 const enemy = enemies[i];
                 const distance = camera.position.distanceTo(enemy.position);
-                if(distance < 2) { // 玩家碰到敌人了
+                if(distance < 2) { // The player encountered an enemy.
                     // Yeti deducts 10, spider deducts 20
                     if(currentLevel === 1) {
                         health -= 10;
