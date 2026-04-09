@@ -3,11 +3,9 @@
     Students:   Andrew Guerette (300287614)
                 Yier Wang       (300191294)
 */
-
 import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-
 let scene;
 let physicsWorld;
 let AmmoLib;
@@ -31,21 +29,26 @@ let keys = {
 };
 let ballThrown = false;
 const MOVEMENTSPEED = 12;
-
 // Global variables related to enemy games
-let enemies = []; // Enemy array, different levels have different enemies
+let enemies = []; // Only snowmen now
 let health = 100; // Player's initial health
-let coin = 0; // Coins obtained by killing enemies
+let coin = 0; // Coins obtained by killing enemies (kept as requested)
 let startButton;
 let statusDisplay;
 let hitCooldown = 0; // Health drain cooldown, prevents continuous health drain
-let inShop = false; // Whether in the store interface
 let gameStarted = false;
 let gameOver = false; // Is the game over
-let currentLevel = 1; // Current level, 1 = Snowman level, 2 = Spider level
-let spiderTarget = null; // Spider's target
-let spiderHealth = 0; // Spider's health, total health 200
-let targetBody = null; // Target collider
+let spiderGenerated = false; // Whether the spider has been generated after all snowmen are killed
+let shopTriggered = false; // Whether the shop dialog has been triggered
+let shopMesh = null; // Reference to the shop mesh for collision detection
+
+// Wall positions (fixed, since walls are parallel to Z axis)
+const LEFT_WALL_X = -36;
+const RIGHT_WALL_X = 16;
+const BEAVER_TAIL_PRICE = 10; // Price per beaver tail, 10 coins each
+const MIN_TREE_SPACING = 1; // Minimum spacing between trees, 1 meter
+const MAX_TREE_SPACING = 10; // Maximum spacing between trees, 10 meters
+const TREE_SCALE = 0.5; // Scale of the tree model, adjust to fit the scene
 
 function initPhysicsWorld() {
     const config = new Ammo.btDefaultCollisionConfiguration();
@@ -60,27 +63,23 @@ function initPhysicsWorld() {
     );
     physicsWorld.setGravity(new Ammo.btVector3(0, -39.2, 0));
 }
-
 // General function for creating rigid bodies
 function createBoxRigidBody(mesh, size, mass, restitution, customPosition = null) {
     const shape = new Ammo.btBoxShape(new Ammo.btVector3(size.x/2, size.y/2, size.z/2));
     const transform = new Ammo.btTransform();
     transform.setIdentity();
-
     const pos = customPosition || mesh.position;
     transform.setOrigin(new Ammo.btVector3(
         pos.x,
         pos.y,
         pos.z
     ));
-
     transform.setRotation(new Ammo.btQuaternion(
         mesh.quaternion.x,
         mesh.quaternion.y,
         mesh.quaternion.z,
         mesh.quaternion.w
     ));
-
     const motionState = new Ammo.btDefaultMotionState(transform);
     const localInertia = new Ammo.btVector3(0, 0, 0);
     shape.calculateLocalInertia(mass, localInertia);
@@ -95,7 +94,6 @@ function createBoxRigidBody(mesh, size, mass, restitution, customPosition = null
     physicsWorld.addRigidBody(body);
     mesh.userData.physicsBody = body;
 }
-
 // Create a spherical rigid body
 function createSphereRigidBody(mesh, radius, mass, restitution) {
     const shape = new Ammo.btSphereShape(radius);
@@ -120,7 +118,6 @@ function createSphereRigidBody(mesh, radius, mass, restitution) {
     physicsWorld.addRigidBody(body);
     mesh.userData.physicsBody = body;
 }
-
 // Throw a snowball
 function throwBall() {
     const geometry = new THREE.SphereGeometry(0.2, 16, 16);
@@ -129,6 +126,9 @@ function throwBall() {
         roughness: 0.8
     });
     const ball = new THREE.Mesh(geometry, material);
+    // Enable shadow for the ball
+    ball.castShadow = true;
+    ball.receiveShadow = true;
     ball.position.copy(camera.position);
     scene.add(ball);
     
@@ -147,7 +147,6 @@ function throwBall() {
     
     sphereMeshes.push(ball);
 }
-
 // Destroy the ball
 function destroyBall(ball) {
     physicsWorld.removeRigidBody(ball.userData.physicsBody);
@@ -159,55 +158,74 @@ function destroyBall(ball) {
         sphereMeshes.splice(index, 1);
     }
 }
-
-// Open the store
-function openShop() {
-    inShop = true;
-    const shopPanel = document.createElement('div');
-    shopPanel.style.position = 'absolute';
-    shopPanel.style.top = '50%';
-    shopPanel.style.left = '50%';
-    shopPanel.style.transform = 'translate(-50%, -50%)';
-    shopPanel.style.padding = '30px';
-    shopPanel.style.backgroundColor = 'rgba(0,0,0,0.8)';
-    shopPanel.style.color = 'white';
-    shopPanel.style.borderRadius = '10px';
-    shopPanel.style.zIndex = '200';
-    shopPanel.innerHTML = `
-                <h2>Shop</h2>
-                <p>You have ${coin} Coins, you can convert them to health, 1 Coin = 1 Health</p>
-                <input type="number" id="healthInput" min="0" max="${coin}" value="0" style="width: 100%; padding: 8px; margin: 10px 0;">
-                <button id="convertBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%; margin-bottom: 10px;">Convert Health</button>
-                <button id="continueBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Continue</button>
+// Trigger the shop dialog
+function triggerShopDialog() {
+    if(shopTriggered) return;
+    shopTriggered = true;
+    // Unlock the mouse so user can input
+    controls.unlock();
+    
+    // Calculate maximum possible order based on coins
+    const maxPossible = Math.min(10, Math.floor(coin / BEAVER_TAIL_PRICE));
+    
+    // Create the dialog panel
+    const dialogPanel = document.createElement('div');
+    dialogPanel.style.position = 'absolute';
+    dialogPanel.style.top = '50%';
+    dialogPanel.style.left = '50%';
+    dialogPanel.style.transform = 'translate(-50%, -50%)';
+    dialogPanel.style.padding = '30px';
+    dialogPanel.style.backgroundColor = 'rgba(0,0,0,0.8)';
+    dialogPanel.style.color = 'white';
+    dialogPanel.style.borderRadius = '10px';
+    dialogPanel.style.zIndex = '200';
+    dialogPanel.innerHTML = `
+        <h2>Congratulations! You have completed the game!</h2>
+        <p>Beaver tails cost ${BEAVER_TAIL_PRICE} coins each. How many would you like to order?</p>
+        <input type="number" id="beaverTailInput" min="1" max="${maxPossible}" value="1" style="width: 100%; padding: 8px; margin: 10px 0;">
+        <button id="confirmBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Confirm Order</button>
+    `;
+    document.body.appendChild(dialogPanel);
+    
+    // Bind confirm button
+    document.getElementById('confirmBtn').addEventListener('click', function() {
+        const input = document.getElementById('beaverTailInput');
+        const inputAmount = parseInt(input.value);
+        // Calculate actual amount the player can afford
+        const actualAmount = Math.min(inputAmount, maxPossible);
+        
+        // Deduct coins
+        coin -= actualAmount * BEAVER_TAIL_PRICE;
+        // Update status display
+        statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
+        
+        // Show message based on whether they could afford the full order
+        if(inputAmount > maxPossible) {
+            // Not enough coins, show the limit message
+            dialogPanel.innerHTML = `
+                <h2>Thank you!</h2>
+                <p>Your coins can only buy ${actualAmount} beaver tail(s). They are ready! Enjoy!</p>
+                <button id="closeBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Close</button>
             `;
-    document.body.appendChild(shopPanel);
-    
-    // Bind Convert Health Button
-    document.getElementById('convertBtn').addEventListener('click', function() {
-        const input = document.getElementById('healthInput');
-        const amount = parseInt(input.value);
-        if(amount > 0 && amount <= coin) {
-            coin -= amount;
-            health += amount;
-            statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
-            input.max = coin;
-            input.value = 0;
+        } else {
+            // Enough coins, normal message
+            dialogPanel.innerHTML = `
+                <h2>Thank you!</h2>
+                <p>Your order of ${actualAmount} beaver tail(s) is ready! Enjoy!</p>
+                <button id="closeBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Close</button>
+            `;
         }
-    });
-    
-    // Bind the continue button
-    document.getElementById('continueBtn').addEventListener('click', function() {
-        // Remove store panel
-        document.body.removeChild(shopPanel);
-        inShop = false;
-        // Enter the next level and generate new enemies
-        currentLevel += 1;
-        generateNewEnemies();
-        // Re-lock the mouse pointer and restore viewpoint control
-        controls.lock();
+        
+        // Bind close button
+        document.getElementById('closeBtn').addEventListener('click', function() {
+            document.body.removeChild(dialogPanel);
+            // Re-lock the mouse if user wants to continue playing
+            if(gameStarted && !gameOver) {
+                controls.lock();
+            }
+        });
     });
 }
-
 // Game over
 function endGame() {
     gameOver = true;
@@ -221,11 +239,11 @@ function endGame() {
     gameOverPanel.style.color = 'white';
     gameOverPanel.style.borderRadius = '10px';
     gameOverPanel.style.zIndex = '200';
-            gameOverPanel.innerHTML = `
-                <h2>Game Over!</h2>
-                <p>You got ${coin} Coins in total</p>
-                <button id="gameOverRestartBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Restart</button>
-            `;
+    gameOverPanel.innerHTML = `
+        <h2>Game Over!</h2>
+        <p>You got ${coin} Coins in total</p>
+        <button id="gameOverRestartBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Restart</button>
+    `;
     document.body.appendChild(gameOverPanel);
     
     // Bind the restart button
@@ -243,25 +261,22 @@ function endGame() {
             scene.remove(enemy);
         }
         enemies = [];
-        currentLevel = 1;
-        spiderTarget = null;
-        spiderHealth = 0;
-        targetBody = null;
         // Reset all states
         health = 100;
         coin = 0;
-        inShop = false;
         gameOver = false;
         gameStarted = false;
         hitCooldown = 0;
+        spiderGenerated = false; // Reset spider generation flag
+        shopTriggered = false; // Reset shop trigger flag
+        shopMesh = null; // Reset shop mesh reference
         // Update Status
         statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
         // Show start button
         startButton.style.display = 'block';
     });
 }
-
-// Generate a new batch of enemies for the new level
+// Generate snowmen enemies
 function generateNewEnemies() {
     // Clear all previous old enemies
     for(let i = 0; i < enemies.length; i++) {
@@ -274,61 +289,45 @@ function generateNewEnemies() {
         scene.remove(enemy);
     }
     enemies = [];
-    // Clear previous spider-related residual variables
-    spiderTarget = null;
-    spiderHealth = 0;
-    targetBody = null;
     
     const loader = new GLTFLoader();
-    let modelPath, baseScale;
-    if(currentLevel === 1) {
-        // Level 1: Snowman Enemy
-        modelPath = 'textures/SnowmanFixed.glb';
-        baseScale = 1;
-    } else {
-        // Level 2: Spider Enemy
-        modelPath = 'textures/MamanSpider.glb';
-        baseScale = 0.5; // Zoom in or out to make the spider the right size
-    }
+    // Only snowmen now
+    const modelPath = 'textures/SnowmanFixed.glb';
+    const baseScale = 1;
     
     loader.load(modelPath, function(gltf) {
         const baseEnemy = gltf.scene;
         baseEnemy.scale.set(baseScale, baseScale, baseScale);
-        // Generate different numbers of enemies based on the level
-        let enemyCount;
-        let minEnemyX, maxEnemyX, enemyWidth;
-        if(currentLevel === 1) {
-            // Level 1: 10 snowmen, randomly distributed
-            enemyCount = 10;
-            // Calculate the size of the snowman
-            const baseBox = new THREE.Box3().setFromObject(baseEnemy);
-            enemyWidth = baseBox.max.x - baseBox.min.x;
-            // Restrict the snowman from generating on the ice area between the snow piles on both sides
-            const snowBankBetweenMinX = -23; // The right boundary of the snow pile on the left
-            const snowBankBetweenMaxX = 3; // The left boundary of the snow pile on the right
-            // Calculate the effective range of the snowman's center
-            minEnemyX = snowBankBetweenMinX + enemyWidth / 2;
-            maxEnemyX = snowBankBetweenMaxX - enemyWidth / 2;
-        } else {
-            // Level 2: 1 spider, BOSS enemy
-            enemyCount = 1;
-        }
+        // 10 snowmen, randomly distributed
+        const enemyCount = 10;
+        // Calculate the size of the snowman
+        const baseBox = new THREE.Box3().setFromObject(baseEnemy);
+        const enemyWidth = baseBox.max.x - baseBox.min.x;
+        // Restrict the snowman from generating on the ice area between the snow piles on both sides
+        const snowBankBetweenMinX = -23; // The right boundary of the snow pile on the left
+        const snowBankBetweenMaxX = 3; // The left boundary of the snow pile on the right
+        // Calculate the effective range of the snowman's center
+        const minEnemyX = snowBankBetweenMinX + enemyWidth / 2;
+        const maxEnemyX = snowBankBetweenMaxX - enemyWidth / 2;
+        
+        // Player's initial position
+        const playerStartPos = new THREE.Vector3(0, 0, 0);
         
         for(let i = 0; i < enemyCount; i++) {
-            let x, z;
-            if(currentLevel === 1) {
-                // Level 1: Random Position
-                x = minEnemyX + Math.random() * (maxEnemyX - minEnemyX);
-                z = 50 + Math.random() * 200; // 50 to 250, far enough from the player, not too close
-            } else {
-                // Level 2: The spider is in the middle front position
-                x = 0;
-                z = 100;
-            }
+            // Random Position
+            const x = minEnemyX + Math.random() * (maxEnemyX - minEnemyX);
+            const z = 50 + Math.random() * 200; // 50 to 250, far enough from the player, not too close
+            
             // Clone the model to avoid loading it repeatedly
             const enemy = baseEnemy.clone();
             enemy.position.set(x, 0, z);
-            // Enable shadow support for the enemy
+            
+            // Make the snowman face the player
+            const dx = playerStartPos.x - x;
+            const dz = playerStartPos.z - z;
+            enemy.rotation.y = Math.atan2(dx, dz);
+            
+            // Enable shadow support for the enemy, all meshes
             enemy.traverse(function(child) {
                 if(child.isMesh) {
                     child.castShadow = true;
@@ -357,67 +356,17 @@ function generateNewEnemies() {
             );
             // Save enemies to an array for collision detection
             enemies.push(enemy);
-            
-            // If it is the spider in the second level, add a target
-            if(currentLevel === 2) {
-                spiderHealth = 5;
-                // Create and display the spider's health bar
-                let healthBarContainer = document.getElementById('spiderHealthBarContainer');
-                if(!healthBarContainer) {
-                    // Creating the health bar element for the first time
-                    healthBarContainer = document.createElement('div');
-                    healthBarContainer.id = 'spiderHealthBarContainer';
-                    healthBarContainer.style.position = 'absolute';
-                    healthBarContainer.style.top = '50px';
-                    healthBarContainer.style.left = '50%';
-                    healthBarContainer.style.transform = 'translateX(-50%)';
-                    healthBarContainer.style.width = '300px';
-                    healthBarContainer.style.height = '20px';
-                    healthBarContainer.style.backgroundColor = '#333333';
-                    healthBarContainer.style.borderRadius = '10px';
-                    healthBarContainer.style.zIndex = '100';
-                    healthBarContainer.style.boxShadow = '0 0 5px rgba(0,0,0,0.5)';
-                    
-                    const healthBar = document.createElement('div');
-                    healthBar.id = 'spiderHealthBar';
-                    healthBar.style.width = '100%';
-                    healthBar.style.height = '100%';
-                    healthBar.style.backgroundColor = '#ff4444';
-                    healthBar.style.borderRadius = '10px';
-                    healthBar.style.transition = 'width 0.2s ease-out';
-                    
-                    healthBarContainer.appendChild(healthBar);
-                    document.body.appendChild(healthBarContainer);
-                }
-                // Display health bar
-                healthBarContainer.style.display = 'block';
-                document.getElementById('spiderHealthBar').style.width = '100%';
-                
-                // Set the targetBody to the spider's own body collider
-                targetBody = enemy.userData.physicsBody;
-            } else {
-                // hid bar
-                const healthBarContainer = document.getElementById('spiderHealthBarContainer');
-                if(healthBarContainer) {
-                    healthBarContainer.style.display = 'none';
-                }
-            }
         }
         gameStarted = true;
-        console.log(gameStarted);
     });
 }
-
 // Start Game
 function startGame() {
     // Hide Start button
     startButton.style.display = 'none';
-    // Reset the level to Level 1
-    currentLevel = 1;
     // Generate new enemies
     generateNewEnemies();
 }
-
 // Snow system
 function createSnowParticles() {
     const particleCount = 1500;
@@ -465,7 +414,6 @@ function createSnowParticles() {
     }
     animateSnow();
 }
-
 // initialization of Three.js
 async function init() {
 	// add rendering surface and initialize the renderer
@@ -475,6 +423,7 @@ async function init() {
     renderer.setClearColor(new THREE.Color(0xffffff));
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap; // Soft shadows for better look
     container.appendChild(renderer.domElement);
 	
     // Scene graph
@@ -482,17 +431,20 @@ async function init() {
     scene.background = new THREE.Color("lightblue");
     AmmoLib = await Ammo();
     initPhysicsWorld();
-
     // Replace the original white ground with the canal ice surface
     const loader = new GLTFLoader();
     loader.load('textures/Canaltexture.glb', function(gltf) {
         floorMesh = gltf.scene;
         floorMesh.position.set(0, 3, 300);
         floorMesh.rotation.y = Math.PI / 2;
-        floorMesh.receiveShadow = true;
-        //floorMesh.material.roughness = 0.3; // Low roughness of the ice surface, simulating a slippery effect
+        // Enable shadow for all meshes in the floor model
+        floorMesh.traverse(function(child) {
+            if(child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+            }
+        });
         scene.add(floorMesh);
-
         let canalBBox = new THREE.Box3().setFromObject(floorMesh);
         const size = new THREE.Vector3();
         canalBBox.getSize(size);
@@ -507,7 +459,6 @@ async function init() {
         scene.add(floorColliderMesh);
         createBoxRigidBody(floorColliderMesh, size, 0, 0.05);
     });
-
     
     const textureLoader = new THREE.TextureLoader();
     const texture = textureLoader.load('textures/ConcreteWall2.jpg');
@@ -524,7 +475,9 @@ async function init() {
         new THREE.BoxGeometry(3, wallHeight, 500),
         wallMaterial
     );
-    leftWallMesh.position.set(-36, 0, 250);
+    leftWallMesh.position.set(LEFT_WALL_X, 0, 250);
+    // Enable shadow for the wall
+    leftWallMesh.castShadow = true;
     leftWallMesh.receiveShadow = true;
     leftWallMesh.material.roughness = 0.8;
     scene.add(leftWallMesh);
@@ -538,7 +491,9 @@ async function init() {
         new THREE.BoxGeometry(3, wallHeight, 500),
         wallMaterial
     );
-    rightWallMesh.position.set(16, 0, 250);
+    rightWallMesh.position.set(RIGHT_WALL_X, 0, 250);
+    // Enable shadow for the wall
+    rightWallMesh.castShadow = true;
     rightWallMesh.receiveShadow = true;
     rightWallMesh.material.roughness = 0.8;
     scene.add(rightWallMesh);
@@ -548,7 +503,51 @@ async function init() {
         0,
         1.0
     );
-
+    
+    // Load and generate pear trees on both sides of the walls
+    loader.load('textures/pear_tree_mesh_photoscan.glb', function(gltf) {
+        const baseTree = gltf.scene;
+        baseTree.scale.set(TREE_SCALE, TREE_SCALE, TREE_SCALE);
+        
+        // Generate trees along the left wall (outside the wall)
+        const leftTreeX = LEFT_WALL_X - 2; // 2 meters to the left of the left wall, outside
+        let z = 0;
+        while(z < 500) {
+            const tree = baseTree.clone();
+            tree.position.set(leftTreeX, 0, z);
+            // Enable shadow for all meshes in the tree
+            tree.traverse(function(child) {
+                if(child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            scene.add(tree);
+            // Random spacing between 1 and 10 meters
+            const spacing = MIN_TREE_SPACING + Math.random() * (MAX_TREE_SPACING - MIN_TREE_SPACING);
+            z += spacing;
+        }
+        
+        // Generate trees along the right wall (outside the wall)
+        const rightTreeX = RIGHT_WALL_X + 2; // 2 meters to the right of the right wall, outside
+        z = 0;
+        while(z < 500) {
+            const tree = baseTree.clone();
+            tree.position.set(rightTreeX, 0, z);
+            // Enable shadow for all meshes in the tree
+            tree.traverse(function(child) {
+                if(child.isMesh) {
+                    child.castShadow = true;
+                    child.receiveShadow = true;
+                }
+            });
+            scene.add(tree);
+            // Random spacing between 1 and 10 meters
+            const spacing = MIN_TREE_SPACING + Math.random() * (MAX_TREE_SPACING - MIN_TREE_SPACING);
+            z += spacing;
+        }
+    });
+    
 	// Camera
 	// calcaulate aspectRatio
 	var aspectRatio = window.innerWidth/window.innerHeight;
@@ -561,14 +560,12 @@ async function init() {
     // Add light to the scene
     const light = new THREE.DirectionalLight(0x88ccff, 3); // Cool-toned light
     light.castShadow = true;
-    light.shadow.camera.left = -25;
-    light.shadow.camera.right = 25;
-    light.shadow.camera.top = 25;
-    light.shadow.camera.bottom = -25;
-    light.shadow.camera.near = 1;
-    light.shadow.camera.far = 50;
-    light.shadow.mapSize.width = 1024;
-    light.shadow.mapSize.height = 1024;
+    light.shadow.camera.left = -50; // Expanded shadow camera range to cover more area
+    light.shadow.camera.right = 50;
+    light.shadow.camera.top = 50;
+    light.shadow.camera.bottom = -50;
+    light.shadow.mapSize.width = 2048; // Higher resolution for sharper shadows
+    light.shadow.mapSize.height = 2048;
     light.position.set(20, 30, 20);
     light.target.position.set(0, 0, 100);
     scene.add(light.target);
@@ -580,13 +577,9 @@ async function init() {
     const hemi = new THREE.HemisphereLight(0x88ccff, 0x444444, 0.4); // Cool-toned hemispherical light
     scene.add(hemi);
     
-    const helper = new THREE.CameraHelper(light.shadow.camera);
-    scene.add(helper);
+    // Removed debug helpers: CameraHelper and AxesHelper
     
     controls = new PointerLockControls(camera, document.body);
-    
-    const axesHelper = new THREE.AxesHelper(1000);
-    scene.add(axesHelper);
     
     // Create Start Button
     startButton = document.createElement('button');
@@ -688,162 +681,78 @@ async function init() {
             }
     
             // Handling the collision of small balls
-            for(let i = 0; i < sphereMeshes.length; i++) {
-                let ball = sphereMeshes[i];
+            for(let j = 0; j < sphereMeshes.length; j++) {
+                let ball = sphereMeshes[j];
                 let ballBody = ball.userData.physicsBody;
                 let ballPointer = AmmoLib.getPointer(ballBody);
                 if(bodyAPointer !== cameraPointer && bodyBPointer !== cameraPointer &&
                     (bodyAPointer === ballPointer || bodyBPointer === ballPointer)) {
                     if (manifold.getNumContacts() > 0) {
-                        // Check if it hit the enemy
-                        let hitEnemy = false;
-                        if(currentLevel === 1) {
-                            // Level 1: Hitting the snowman kills it instantly
-                            for(let j = 0; j < enemies.length; j++) {
-                                let enemy = enemies[j];
-                                if(enemy.userData.physicsBody) {
-                                    let enemyPointer = AmmoLib.getPointer(enemy.userData.physicsBody);
-                                    // collision between the ball and the enemy
+                        // Check if it hit the shop
+                        let hitShop = false;
+                        if(shopMesh && !shopTriggered) {
+                            // Check if the other body is the shop
+                            for(let k = 0; k < shopMesh.children.length; k++) {
+                                let child = shopMesh.children[k];
+                                if(child.userData.physicsBody) {
+                                    let shopPointer = AmmoLib.getPointer(child.userData.physicsBody);
                                     if(
-                                        (bodyAPointer === enemyPointer && bodyBPointer === ballPointer) ||
-                                        (bodyBPointer === enemyPointer && bodyAPointer === ballPointer)
+                                        (bodyAPointer === shopPointer && bodyBPointer === ballPointer) ||
+                                        (bodyBPointer === shopPointer && bodyAPointer === ballPointer)
                                     ) {
-                                        // Hit the snowman to get Coins
-                                        coin += 10;
-                                        statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
-                                        // Remove the snowman
-                                        physicsWorld.removeRigidBody(enemy.userData.physicsBody);
-                                        Ammo.destroy(enemy.userData.physicsBody.getMotionState());
-                                        Ammo.destroy(enemy.userData.physicsBody);
-                                        scene.remove(enemy);
-                                        enemies.splice(j, 1);
-                                        // Delete the ball at the same time
-                                        destroyBall(ball);
-                                        hitEnemy = true;
+                                        hitShop = true;
                                         break;
                                     }
                                 }
                             }
-                        } else {
-                            // Level 2: Check if the target was hit
-                            if(targetBody) {
-                                let targetPointer = AmmoLib.getPointer(targetBody);
-                                if(bodyAPointer === targetPointer || bodyBPointer === targetPointer) {
-                                    // Hit the target, deduct the spider's health
-                                    spiderHealth -= 1;
-                                    // Update the spider's health bar
-                                    const healthBar = document.getElementById('spiderHealthBar');
-                                    if(healthBar) {
-                                        healthBar.style.width = (spiderHealth / 5 * 100) + '%';
-                                    }
-                                    // Update the status display to show the spider's health
-                                    statusDisplay.textContent = `Health: ${health} | Coin: ${coin} | Spider Health: ${spiderHealth}`;
-                                    // Check if the spider is dead
-                                    if(spiderHealth <= 0) {
-                                        // Hide the health bar after the spider dies
-                                        const healthBarContainer = document.getElementById('spiderHealthBarContainer');
-                                        if(healthBarContainer) {
-                                            healthBarContainer.style.display = 'none';
-                                        }
-                                        // The spider is dead, giving a 200 Coin as reward
-                                        coin += 200;
-                                        // Remove all related objects
-                                        let spider = enemies[0];
-                                        physicsWorld.removeRigidBody(spider.userData.physicsBody);
-                                        Ammo.destroy(spider.userData.physicsBody.getMotionState());
-                                        Ammo.destroy(spider.userData.physicsBody);
-                                        physicsWorld.removeRigidBody(targetBody);
-                                        Ammo.destroy(targetBody.getMotionState());
-                                        Ammo.destroy(targetBody);
-                                        scene.remove(spider);
-                                        enemies = [];
-                                        spiderTarget = null;
-                                        targetBody = null;
-                                        // Show clearance tips
-                                        const winPanel = document.createElement('div');
-                                        winPanel.style.position = 'absolute';
-                                        winPanel.style.top = '50%';
-                                        winPanel.style.left = '50%';
-                                        winPanel.style.transform = 'translate(-50%, -50%)';
-                                        winPanel.style.padding = '30px';
-                                        winPanel.style.backgroundColor = 'rgba(0,0,0,0.8)';
-                                        winPanel.style.color = 'white';
-                                        winPanel.style.borderRadius = '10px';
-                                        winPanel.style.zIndex = '200';
-                                        winPanel.innerHTML = `
-                                            <h2>Congratulations! You Win!</h2>
-                                            <p>You got ${coin} Coins in total</p>
-                                            <p>Would you like to buy a trophy?</p>
-                                            <button id="enterShopBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%; margin-bottom: 10px;">Enter Shop</button>
-                                            <button id="restartBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Play Again</button>
-                                        `;
-                                        document.body.appendChild(winPanel);
-                                        
-                                        // Bind the button to enter the store
-                                        document.getElementById('enterShopBtn').addEventListener('click', function() {
-                                            // Remove the level completion panel
-                                            document.body.removeChild(winPanel);
-                                            // Load the shop model and place it in front of the player
-                                            const loader = new GLTFLoader();
-                                            loader.load('textures/BeavertailStand.glb', function(gltf) {
-                                                const shop = gltf.scene;
-                                                // Place it 5 meters in front of the player
-                                                shop.position.set(camera.position.x, 0, camera.position.z + 5);
-                                                shop.scale.set(0.5, 0.5, 0.5); // Scale size
-                                                scene.add(shop);
-                                            });
-                                            
-                                            // Check if there are enough coins to buy the trophy
-                                            if(coin >= 200) {
-                                                coin -= 200;
-                                                alert('You have bought and got the trophy!');
-                                            } else {
-                                                alert('You won, but you don\'t have enough Coins to buy the trophy.');
-                                            }
-                                        });
-                                        
-                                        // Bind the restart game button
-                                        document.getElementById('restartBtn').addEventListener('click', function() {
-                                            // Remove the level completion panel
-                                            document.body.removeChild(winPanel);
-                                            // Reset all game states
-                                            health = 100;
-                                            coin = 0;
-                                            inShop = false;
-                                            gameOver = false;
-                                            gameStarted = false;
-                                            hitCooldown = 0;
-                                            enemies = [];
-                                            currentLevel = 1;
-                                            spiderTarget = null;
-                                            targetBody = null;
-                                            spiderHealth = 0;
-                                            // Update status display
-                                            statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
-                                            // Show the start button and return to the initial state
-                                            startButton.style.display = 'block';
-                                        });
-                                    }
+                        }
+                        if(hitShop) {
+                            // Trigger the shop dialog
+                            triggerShopDialog();
+                        }
+                        
+                        // Check if it hit the snowman
+                        let hitEnemy = false;
+                        for(let k = 0; k < enemies.length; k++) {
+                            let enemy = enemies[k];
+                            if(enemy.userData.physicsBody) {
+                                let enemyPointer = AmmoLib.getPointer(enemy.userData.physicsBody);
+                                // collision between the ball and the enemy
+                                if(
+                                    (bodyAPointer === enemyPointer && bodyBPointer === ballPointer) ||
+                                    (bodyBPointer === enemyPointer && bodyAPointer === ballPointer)
+                                ) {
+                                    // Hit the snowman to get Coins (kept as requested)
+                                    coin += 10;
+                                    statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
+                                    // Remove the snowman
+                                    physicsWorld.removeRigidBody(enemy.userData.physicsBody);
+                                    Ammo.destroy(enemy.userData.physicsBody.getMotionState());
+                                    Ammo.destroy(enemy.userData.physicsBody);
+                                    scene.remove(enemy);
+                                    enemies.splice(k, 1);
                                     hitEnemy = true;
+                                    break;
                                 }
                             }
                         }
                         
+                        // No matter what it hit, create the particle effect and destroy the ball
                         // Create a snowball explosion light effect
                         const particleCount = 10;
-                        const geometry = new THREE.BufferGeometry();
                         const positions = new Float32Array(particleCount * 3);
                         const velocities = [];
-                        for(let j = 0; j < particleCount; j++) {
-                            positions[j*3] = ball.position.x;
-                            positions[j*3+1] = ball.position.y;
-                            positions[j*3+2] = ball.position.z;
+                        for(let l = 0; l < particleCount; l++) {
+                            positions[l*3] = ball.position.x;
+                            positions[l*3+1] = ball.position.y;
+                            positions[l*3+2] = ball.position.z;
                             velocities.push(new THREE.Vector3(
                                 (Math.random() - 0.5) * 0.2,
                                 Math.random() * 0.2,
                                 (Math.random() - 0.5) * 0.2
                             ));
                         }
+                        const geometry = new THREE.BufferGeometry();
                         geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
                         const material = new THREE.PointsMaterial({color: 0xffffff, size: 0.2});
                         const particles = new THREE.Points(geometry, material);
@@ -857,16 +766,17 @@ async function init() {
                                 return;
                             }
                             const pos = particles.geometry.attributes.position.array;
-                            for(let j = 0; j < particleCount; j++) {
-                                pos[j*3] += velocities[j].x;
-                                pos[j*3+1] += velocities[j].y;
-                                pos[j*3+2] += velocities[j].z;
-                                velocities[j].y -= 0.01; // Gravity effect
+                            for(let l = 0; l < particleCount; l++) {
+                                pos[l*3] += velocities[l].x;
+                                pos[l*3+1] += velocities[l].y;
+                                pos[l*3+2] += velocities[l].z;
+                                velocities[l].y -= 0.01; // Gravity effect
                             }
                             particles.geometry.attributes.position.needsUpdate = true;
                             requestAnimationFrame(animateParticles);
                         }
                         animateParticles();
+                        
                         // Destroy the ball
                         destroyBall(ball);
                     }
@@ -933,23 +843,8 @@ async function init() {
             Ammo.destroy(transform);
         }
         
-        /* 
-        Double insurance position restriction: 
-        Ensure that players do not move through both sides of the snow walls, 
-	    and do not fall off the ground
-        const pos = camera.position;
-        X-axis restriction: limits the player within the frozen canal area, 
-	    preventing them from moving beyond the snow piles on either side
-        pos.x = Math.max(-34, Math.min(14, pos.x));
-        Y-axis limit: Ensures the player always stays
-	    above the ground and does not fall out of the scene
-        pos.y = Math.max(0, pos.y);
-        camera.position.copy(pos);
-        */
-        
         // Check game status
         if(gameOver) return; // Game over, pause all logic
-        if(inShop) return; // Store interface, pause all logic
         
         // Check if health is empty, game over
         if(health <= 0) {
@@ -957,15 +852,8 @@ async function init() {
             return;
         }
         
-        // Check whether all enemies have been killed, then enter the shop
-        if(enemies.length === 0 && gameStarted) {
-            openShop();
-            return;
-        }
-        
-        // Update the enemy's movement: move towards the player,
-	    // with different speeds for different levels
-        let enemySpeed = currentLevel === 1 ? 0.03 : 0.05; // The spiders are faster in the second level
+        // Update the snowmen's movement: move towards the player
+        const enemySpeed = 0.06; // Doubled the speed to make it faster
         for(let i = 0; i < enemies.length; i++) {
             let enemy = enemies[i];
             // Calculate the direction toward the player
@@ -976,12 +864,8 @@ async function init() {
             // Movement speed
             enemy.position.x += dir.x * enemySpeed;
             enemy.position.z += dir.z * enemySpeed;
-            // Motion animation:
-	        // In level 1, the snowman jumps;
-	        // in level 2, the spider does not jump
-            if(currentLevel === 1) {
-                enemy.position.y = 0 + Math.sin(Date.now() * 0.005 + i) * 0.2;
-            }
+            // Motion animation: snowman jumps
+            enemy.position.y = 0 + Math.sin(Date.now() * 0.005 + i) * 0.2;
             // Update the position of the physics rigid body and synchronize the collider
             const body = enemy.userData.physicsBody;
             if(body) {
@@ -996,34 +880,101 @@ async function init() {
             }
         }
         
+        // Check if all snowmen are killed, generate spider and shop
+        if(enemies.length === 0 && gameStarted && !spiderGenerated) {
+            spiderGenerated = true;
+            // Calculate the position based on your requirements
+            // 1. The midpoint of the line between two walls
+            const midX = (LEFT_WALL_X + RIGHT_WALL_X) / 2;
+            const midZ = camera.position.z;
+            // 2. From midpoint: forward 10m, up 6m, right 8m for spider
+            const spiderX = midX + 8; // Right 8m
+            const spiderY = 6; // Up 6m
+            const spiderZ = midZ + 10; // Forward 10m
+            
+            // Load the spider model first
+            const loader = new GLTFLoader();
+            loader.load('textures/MamanSpider.glb', function(gltf) {
+                const spider = gltf.scene;
+                // Set position
+                spider.position.set(spiderX, spiderY, spiderZ);
+                // Scale down by half
+                spider.scale.set(0.5, 0.5, 0.5);
+                // Make the spider face the player
+                const dx = camera.position.x - spiderX;
+                const dz = camera.position.z - spiderZ;
+                spider.rotation.y = Math.atan2(dx, dz);
+                // Enable shadow, use original model material
+                spider.traverse(function(child) {
+                    if(child.isMesh) {
+                        child.castShadow = true;
+                        child.receiveShadow = true;
+                        // Use original material from the model file, no custom overrides
+                    }
+                });
+                scene.add(spider);
+                
+                // Now load the Beavertail shop, updated parameters:
+                // 1. 16m to the left of the spider
+                // 2. Down 5m from spider's height
+                // 3. Rotate 45 degrees counter-clockwise around Y axis
+                // 4. Scale up by 2x, now 2.0
+                const shopX = spiderX - 16; // Left 16m from spider
+                const shopY = spiderY - 5; // Lower 1m from previous position
+                const shopZ = spiderZ; // Same forward position as spider
+                loader.load('textures/BeavertailStand.glb', function(gltf) {
+                    const shop = gltf.scene;
+                    // Set position
+                    shop.position.set(shopX, shopY, shopZ);
+                    // Scale up by 2x, now 2.0
+                    shop.scale.set(2.0, 2.0, 2.0);
+                    // Rotate 45 degrees counter-clockwise around Y axis
+                    // In Three.js, positive Y rotation is counter-clockwise
+                    shop.rotation.y = THREE.MathUtils.degToRad(45);
+                    // Enable shadow
+                    shop.traverse(function(child) {
+                        if(child.isMesh) {
+                            child.castShadow = true;
+                            child.receiveShadow = true;
+                            // Add physics body for shop to detect collision
+                            const box = new THREE.Box3().setFromObject(child);
+                            const size = new THREE.Vector3(
+                                box.max.x - box.min.x,
+                                box.max.y - box.min.y,
+                                box.max.z - box.min.z
+                            );
+                            const boxCenter = box.getCenter(new THREE.Vector3());
+                            createBoxRigidBody(child, size, 0, 0.0, boxCenter);
+                        }
+                    });
+                    scene.add(shop);
+                    // Save reference to shop mesh
+                    shopMesh = shop;
+                });
+            });
+        }
+        
+        // Check if player is near the shop
+        if(shopMesh && !shopTriggered) {
+            const distance = camera.position.distanceTo(shopMesh.position);
+            if(distance < 3) { // If player is within 3 meters of the shop
+                triggerShopDialog();
+            }
+        }
+        
         // Detect collision between player and enemy, deduct health
         if(Date.now() > hitCooldown) {
             for(let i = 0; i < enemies.length; i++) {
                 const enemy = enemies[i];
                 const distance = camera.position.distanceTo(enemy.position);
                 if(distance < 2) { // The player encountered an enemy.
-                    // Yeti deducts 10, spider deducts 20
-                    if(currentLevel === 1) {
-                        health -= 10;
-                    } else {
-                        health -= 20;
-                    }
+                    health -= 10;
                     if(health < 0) health = 0;
                     statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
                     hitCooldown = Date.now() + 1000; // 1-second cooldown to prevent continuous HP loss
                     break;
                 }
             }
-        }
-        
-        // Keep the spider's target always facing the player
-        if(spiderTarget) {
-            spiderTarget.lookAt(camera.position);
-        }
-        
-        // The second level updates the status display, showing the spider's health
-        if(currentLevel === 2) {
-            statusDisplay.textContent = `Health: ${health} | Coin: ${coin} | Spider Health: ${spiderHealth}`;
         }
         
 		renderer.render(scene, camera);
