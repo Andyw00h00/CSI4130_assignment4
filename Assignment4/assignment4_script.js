@@ -62,14 +62,16 @@ function initPhysicsWorld() {
 }
 
 // General function for creating rigid bodies
-function createBoxRigidBody(mesh, size, mass, restitution) {
+function createBoxRigidBody(mesh, size, mass, restitution, customPosition = null) {
     const shape = new Ammo.btBoxShape(new Ammo.btVector3(size.x/2, size.y/2, size.z/2));
     const transform = new Ammo.btTransform();
     transform.setIdentity();
+
+    const pos = customPosition || mesh.position;
     transform.setOrigin(new Ammo.btVector3(
-        mesh.position.x,
-        mesh.position.y,
-        mesh.position.z
+        pos.x,
+        pos.y,
+        pos.z
     ));
 
     transform.setRotation(new Ammo.btQuaternion(
@@ -281,7 +283,7 @@ function generateNewEnemies() {
     let modelPath, baseScale;
     if(currentLevel === 1) {
         // Level 1: Snowman Enemy
-        modelPath = 'textures/snowman.glb';
+        modelPath = 'textures/SnowmanFixed.glb';
         baseScale = 1;
     } else {
         // Level 2: Spider Enemy
@@ -296,8 +298,8 @@ function generateNewEnemies() {
         let enemyCount;
         let minEnemyX, maxEnemyX, enemyWidth;
         if(currentLevel === 1) {
-            // Level 1: 5 snowmen, randomly distributed
-            enemyCount = 5;
+            // Level 1: 10 snowmen, randomly distributed
+            enemyCount = 10;
             // Calculate the size of the snowman
             const baseBox = new THREE.Box3().setFromObject(baseEnemy);
             enemyWidth = baseBox.max.x - baseBox.min.x;
@@ -334,6 +336,8 @@ function generateNewEnemies() {
                 }
             });
             scene.add(enemy);
+            // Update the model's world matrix
+            enemy.updateMatrixWorld(true);
             // Calculate the enemy's bounding box and create the corresponding collider
             const box = new THREE.Box3().setFromObject(enemy);
             const size = new THREE.Vector3(
@@ -341,19 +345,22 @@ function generateNewEnemies() {
                 box.max.y - box.min.y,
                 box.max.z - box.min.z
             );
-            // Create dynamic rigid body, support movement
+            // Calculate the center of the model's bounding box
+            const boxCenter = box.getCenter(new THREE.Vector3());
+            // Create dynamic rigid body make sure aligning
             createBoxRigidBody(
                 enemy,
                 size,
                 1,
-                1.0
+                1.0,
+                boxCenter
             );
             // Save enemies to an array for collision detection
             enemies.push(enemy);
             
             // If it is the spider in the second level, add a target
             if(currentLevel === 2) {
-                spiderHealth = 5; // Hit 5 times
+                spiderHealth = 5;
                 // Create and display the spider's health bar
                 let healthBarContainer = document.getElementById('spiderHealthBarContainer');
                 if(!healthBarContainer) {
@@ -696,7 +703,7 @@ async function init() {
                                 let enemy = enemies[j];
                                 if(enemy.userData.physicsBody) {
                                     let enemyPointer = AmmoLib.getPointer(enemy.userData.physicsBody);
-                                    // It must be a collision between the ball and the enemy
+                                    // collision between the ball and the enemy
                                     if(
                                         (bodyAPointer === enemyPointer && bodyBPointer === ballPointer) ||
                                         (bodyBPointer === enemyPointer && bodyAPointer === ballPointer)
@@ -727,7 +734,7 @@ async function init() {
                                     // Update the spider's health bar
                                     const healthBar = document.getElementById('spiderHealthBar');
                                     if(healthBar) {
-                                    healthBar.style.width = (spiderHealth / 5 * 100) + '%';
+                                        healthBar.style.width = (spiderHealth / 5 * 100) + '%';
                                     }
                                     // Update the status display to show the spider's health
                                     statusDisplay.textContent = `Health: ${health} | Coin: ${coin} | Spider Health: ${spiderHealth}`;
@@ -771,7 +778,7 @@ async function init() {
                                             <button id="restartBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Play Again</button>
                                         `;
                                         document.body.appendChild(winPanel);
-                                                
+                                        
                                         // Bind the button to enter the store
                                         document.getElementById('enterShopBtn').addEventListener('click', function() {
                                             // Remove the level completion panel
@@ -785,7 +792,7 @@ async function init() {
                                                 shop.scale.set(0.5, 0.5, 0.5); // Scale size
                                                 scene.add(shop);
                                             });
-                                                    
+                                            
                                             // Check if there are enough coins to buy the trophy
                                             if(coin >= 200) {
                                                 coin -= 200;
@@ -794,7 +801,7 @@ async function init() {
                                                 alert('You won, but you don\'t have enough Coins to buy the trophy.');
                                             }
                                         });
-                                                
+                                        
                                         // Bind the restart game button
                                         document.getElementById('restartBtn').addEventListener('click', function() {
                                             // Remove the level completion panel
@@ -821,7 +828,7 @@ async function init() {
                                 }
                             }
                         }
-
+                        
                         // Create a snowball explosion light effect
                         const particleCount = 10;
                         const geometry = new THREE.BufferGeometry();
@@ -832,7 +839,7 @@ async function init() {
                             positions[j*3+1] = ball.position.y;
                             positions[j*3+2] = ball.position.z;
                             velocities.push(new THREE.Vector3(
-                                (Math.random() - 0.5) * 0.2, 
+                                (Math.random() - 0.5) * 0.2,
                                 Math.random() * 0.2,
                                 (Math.random() - 0.5) * 0.2
                             ));
@@ -857,7 +864,7 @@ async function init() {
                                 velocities[j].y -= 0.01; // Gravity effect
                             }
                             particles.geometry.attributes.position.needsUpdate = true;
-                                requestAnimationFrame(animateParticles);
+                            requestAnimationFrame(animateParticles);
                         }
                         animateParticles();
                         // Destroy the ball
@@ -866,7 +873,7 @@ async function init() {
                 }
             }
             if(cameraOnFloor) {
-                    //break; // Early exit if all contact points found
+                //break; // Early exit if all contact points found
             }
         }
         
