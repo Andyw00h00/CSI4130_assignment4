@@ -30,9 +30,9 @@ let keys = {
 let ballThrown = false;
 const MOVEMENTSPEED = 12;
 // Global variables related to enemy games
-let enemies = []; // Only snowmen now
+let enemies = [];
 let health = 100; // Player's initial health
-let coin = 0; // Coins obtained by killing enemies (kept as requested)
+let coin = 0; // Coins obtained by killing enemies
 let startButton;
 let statusDisplay;
 let hitCooldown = 0; // Health drain cooldown, prevents continuous health drain
@@ -42,13 +42,13 @@ let spiderGenerated = false; // Whether the spider has been generated after all 
 let shopTriggered = false; // Whether the shop dialog has been triggered
 let shopMesh = null; // Reference to the shop mesh for collision detection
 
-// Wall positions (fixed, since walls are parallel to Z axis)
+// Fixed Wall positions
 const LEFT_WALL_X = -36;
 const RIGHT_WALL_X = 16;
-const BEAVER_TAIL_PRICE = 10; // Price per beaver tail, 10 coins each
-const MIN_TREE_SPACING = 1; // Minimum spacing between trees, 1 meter
-const MAX_TREE_SPACING = 100; // Maximum spacing between trees, 10 meters
-const TREE_SCALE = 0.5; // Scale of the tree model, adjust to fit the scene
+const BEAVER_TAIL_PRICE = 10; // Price per beaver tail
+const MIN_TREE_SPACING = 1; // Minimum spacing between trees
+const MAX_TREE_SPACING = 100; // Maximum spacing between trees
+const TREE_SCALE = 0.5; // Scale of the tree model
 
 function initPhysicsWorld() {
     const config = new Ammo.btDefaultCollisionConfiguration();
@@ -63,6 +63,7 @@ function initPhysicsWorld() {
     );
     physicsWorld.setGravity(new Ammo.btVector3(0, -39.2, 0));
 }
+
 // General function for creating rigid bodies
 function createBoxRigidBody(mesh, size, mass, restitution, customPosition = null) {
     const shape = new Ammo.btBoxShape(new Ammo.btVector3(size.x/2, size.y/2, size.z/2));
@@ -94,6 +95,7 @@ function createBoxRigidBody(mesh, size, mass, restitution, customPosition = null
     physicsWorld.addRigidBody(body);
     mesh.userData.physicsBody = body;
 }
+
 // Create a spherical rigid body
 function createSphereRigidBody(mesh, radius, mass, restitution) {
     const shape = new Ammo.btSphereShape(radius);
@@ -118,6 +120,7 @@ function createSphereRigidBody(mesh, radius, mass, restitution) {
     physicsWorld.addRigidBody(body);
     mesh.userData.physicsBody = body;
 }
+
 // Throw a snowball
 function throwBall() {
     const geometry = new THREE.SphereGeometry(0.2, 16, 16);
@@ -147,6 +150,7 @@ function throwBall() {
     
     sphereMeshes.push(ball);
 }
+
 // Destroy the ball
 function destroyBall(ball) {
     physicsWorld.removeRigidBody(ball.userData.physicsBody);
@@ -158,6 +162,7 @@ function destroyBall(ball) {
         sphereMeshes.splice(index, 1);
     }
 }
+
 // Trigger the shop dialog
 function triggerShopDialog() {
     if(shopTriggered) return;
@@ -201,14 +206,14 @@ function triggerShopDialog() {
         
         // Show message based on whether they could afford the full order
         if(inputAmount > maxPossible) {
-            // Not enough coins, show the limit message
+            // Not enough coins show the limit message
             dialogPanel.innerHTML = `
                 <h2>Thank you!</h2>
                 <p>Your coins can only buy ${actualAmount} beaver tail(s). They are ready! Enjoy!</p>
                 <button id="closeBtn" style="padding: 10px 20px; font-size: 16px; cursor: pointer; width: 100%;">Close</button>
             `;
         } else {
-            // Enough coins, normal message
+            // Enough coins message
             dialogPanel.innerHTML = `
                 <h2>Thank you!</h2>
                 <p>Your order of ${actualAmount} beaver tail(s) is ready! Enjoy!</p>
@@ -226,6 +231,7 @@ function triggerShopDialog() {
         });
     });
 }
+
 // Game over
 function endGame() {
     gameOver = true;
@@ -276,6 +282,7 @@ function endGame() {
         startButton.style.display = 'block';
     });
 }
+
 // Generate snowmen enemies
 function generateNewEnemies() {
     // Clear all previous old enemies
@@ -316,7 +323,7 @@ function generateNewEnemies() {
         for(let i = 0; i < enemyCount; i++) {
             // Random Position
             const x = minEnemyX + Math.random() * (maxEnemyX - minEnemyX);
-            const z = 50 + Math.random() * 200; // 50 to 250, far enough from the player, not too close
+            const z = 50 + Math.random() * 200; // 50 to 250, far enough from the player not too close
             
             // Clone the model to avoid loading it repeatedly
             const enemy = baseEnemy.clone();
@@ -327,7 +334,7 @@ function generateNewEnemies() {
             const dz = playerStartPos.z - z;
             enemy.rotation.y = Math.atan2(dx, dz);
             
-            // Enable shadow support for the enemy, all meshes
+            // Enable shadow support for all meshes
             enemy.traverse(function(child) {
                 if(child.isMesh) {
                     child.castShadow = true;
@@ -360,6 +367,7 @@ function generateNewEnemies() {
         gameStarted = true;
     });
 }
+
 // Start Game
 function startGame() {
     // Hide Start button
@@ -509,8 +517,8 @@ async function init() {
         const baseTree = gltf.scene;
         baseTree.scale.set(TREE_SCALE, TREE_SCALE, TREE_SCALE);
         
-        // Generate trees along the left wall (outside the wall)
-        const leftTreeX = LEFT_WALL_X - 2; // 2 meters to the left of the left wall, outside
+        // Generate trees along the left wall
+        const leftTreeX = LEFT_WALL_X - 2; // 2 meters to the left of the left wall outside
         let z = 0;
         while(z < 500) {
             const tree = baseTree.clone();
@@ -528,8 +536,8 @@ async function init() {
             z += spacing;
         }
         
-        // Generate trees along the right wall (outside the wall)
-        const rightTreeX = RIGHT_WALL_X + 2; // 2 meters to the right of the right wall, outside
+        // Generate trees along the right wall
+        const rightTreeX = RIGHT_WALL_X + 2; // 2 meters to the right of the right wall outside
         z = 0;
         while(z < 500) {
             const tree = baseTree.clone();
@@ -581,8 +589,6 @@ async function init() {
     
     const hemi = new THREE.HemisphereLight(0x88ccff, 0x444444, 0.4); // Cool-toned hemispherical light
     scene.add(hemi);
-    
-    // Removed debug helpers: CameraHelper and AxesHelper
     
     controls = new PointerLockControls(camera, document.body);
     
@@ -727,7 +733,7 @@ async function init() {
                                     (bodyAPointer === enemyPointer && bodyBPointer === ballPointer) ||
                                     (bodyBPointer === enemyPointer && bodyAPointer === ballPointer)
                                 ) {
-                                    // Hit the snowman to get Coins (kept as requested)
+                                    // Hit the snowman to get Coins
                                     coin += 10;
                                     statusDisplay.textContent = `Health: ${health} | Coin: ${coin}`;
                                     // Remove the snowman
@@ -742,8 +748,8 @@ async function init() {
                             }
                         }
                         
-                        // No matter what it hit, create the particle effect and destroy the ball
-                        // Create a snowball explosion light effect
+                        //Create the particle effect and destroy the ball
+                        // Snowball explosion light effect
                         const particleCount = 10;
                         const positions = new Float32Array(particleCount * 3);
                         const velocities = [];
@@ -762,7 +768,7 @@ async function init() {
                         const material = new THREE.PointsMaterial({color: 0xffffff, size: 0.2});
                         const particles = new THREE.Points(geometry, material);
                         scene.add(particles);
-                        // Particle animation, slowly disappearing
+                        // Particle animation slowly disappearing
                         let life = 30;
                         function animateParticles() {
                             life--;
@@ -849,29 +855,29 @@ async function init() {
         }
         
         // Check game status
-        if(gameOver) return; // Game over, pause all logic
+        if(gameOver) return; // Game over pause all logic
         
-        // Check if health is empty, game over
+        // Check if health is empty game over
         if(health <= 0) {
             endGame();
             return;
         }
         
-        // Update the snowmen's movement: move towards the player
-        const enemySpeed = 0.06; // Doubled the speed to make it faster
+        // Snowmen move towards the player
+        const enemySpeed = 0.06;
         for(let i = 0; i < enemies.length; i++) {
             let enemy = enemies[i];
             // Calculate the direction toward the player
             const dir = new THREE.Vector3();
             dir.subVectors(camera.position, enemy.position);
-            dir.y = 0; // Move only in the horizontal direction
+            dir.y = 0;
             dir.normalize();
             // Movement speed
             enemy.position.x += dir.x * enemySpeed;
             enemy.position.z += dir.z * enemySpeed;
-            // Motion animation: snowman jumps
+            // Motion animation snowman jumps
             enemy.position.y = 0 + Math.sin(Date.now() * 0.005 + i) * 0.2;
-            // Update the position of the physics rigid body and synchronize the collider
+            // Position of the physics rigid body and synchronize the collider
             const body = enemy.userData.physicsBody;
             if(body) {
                 const transform = new AmmoLib.btTransform();
@@ -885,17 +891,17 @@ async function init() {
             }
         }
         
-        // Check if all snowmen are killed, generate spider and shop
+        // Check if all snowmen are killed generate spider and shop
         if(enemies.length === 0 && gameStarted && !spiderGenerated) {
             spiderGenerated = true;
-            // Calculate the position based on your requirements
+            // Calculate the position based on current position
             // 1. The midpoint of the line between two walls
             const midX = (LEFT_WALL_X + RIGHT_WALL_X) / 2;
             const midZ = camera.position.z;
             // 2. From midpoint: forward 10m, up 6m, right 8m for spider
-            const spiderX = midX + 8; // Right 8m
-            const spiderY = 6; // Up 6m
-            const spiderZ = midZ + 10; // Forward 10m
+            const spiderX = midX + 8;
+            const spiderY = 6;
+            const spiderZ = midZ + 10;
             
             // Load the spider model first
             const loader = new GLTFLoader();
@@ -909,32 +915,30 @@ async function init() {
                 const dx = camera.position.x - spiderX;
                 const dz = camera.position.z - spiderZ;
                 spider.rotation.y = Math.atan2(dx, dz);
-                // Enable shadow, use original model material
+                // Enable shadow use original model material
                 spider.traverse(function(child) {
                     if(child.isMesh) {
                         child.castShadow = true;
                         child.receiveShadow = true;
-                        // Use original material from the model file, no custom overrides
                     }
                 });
                 scene.add(spider);
                 
-                // Now load the Beavertail shop, updated parameters:
+                // Beavertail shop parameters:
                 // 1. 16m to the left of the spider
                 // 2. Down 5m from spider's height
                 // 3. Rotate 45 degrees counter-clockwise around Y axis
-                // 4. Scale up by 2x, now 2.0
-                const shopX = spiderX - 16; // Left 16m from spider
-                const shopY = spiderY - 5; // Lower 1m from previous position
-                const shopZ = spiderZ; // Same forward position as spider
+                // 4. Scale up by 2x
+                const shopX = spiderX - 16;
+                const shopY = spiderY - 5;
+                const shopZ = spiderZ;
                 loader.load('textures/BeavertailStand.glb', function(gltf) {
                     const shop = gltf.scene;
                     // Set position
                     shop.position.set(shopX, shopY, shopZ);
-                    // Scale up by 2x, now 2.0
+                    // Scale up by 2x
                     shop.scale.set(2.0, 2.0, 2.0);
                     // Rotate 45 degrees counter-clockwise around Y axis
-                    // In Three.js, positive Y rotation is counter-clockwise
                     shop.rotation.y = THREE.MathUtils.degToRad(45);
                     // Enable shadow
                     shop.traverse(function(child) {
