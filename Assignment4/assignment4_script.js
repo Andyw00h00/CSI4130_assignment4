@@ -557,8 +557,13 @@ async function init() {
     camera.lookAt(0,0,100);
     createSphereRigidBody(camera, 0.1, 1, 0.0);
     
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
     // Add light to the scene
     const light = new THREE.DirectionalLight(0x88ccff, 3); // Cool-toned light
+    light.shadow.bias = -0.0005;
+    light.shadow.normalBias = 0.02;
     light.castShadow = true;
     light.shadow.camera.left = -50; // Expanded shadow camera range to cover more area
     light.shadow.camera.right = 50;
@@ -632,7 +637,7 @@ async function init() {
     });
     
     // Mouse Lock Listener
-    controls.addEventListener('lock', function() {
+    document.addEventListener('click', function() {
         if(gameStarted) {
             controls.lock();
         }
