@@ -48,7 +48,7 @@ const LEFT_WALL_X = -36;
 const RIGHT_WALL_X = 16;
 const BEAVER_TAIL_PRICE = 10; // Price per beaver tail
 const MIN_TREE_SPACING = 1; // Minimum spacing between trees
-const MAX_TREE_SPACING = 10; // Maximum spacing between trees
+const MAX_TREE_SPACING = 100; // Maximum spacing between trees
 const TREE_SCALE = 0.5; // Scale of the tree model
 
 function initPhysicsWorld() {
